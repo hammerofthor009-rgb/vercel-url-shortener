@@ -1,0 +1,8 @@
+{
+  "rewrites": [
+    {
+      "source": "/:slug(.+\\.mp4)",
+      "destination": "/api/redirect?slug=:slug"
+    }
+  ]
+}
