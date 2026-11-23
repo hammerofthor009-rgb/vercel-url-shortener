@@ -1,37 +1,24 @@
-// api/shorten.js
-const REDIS_URL = process.env.UPSTASH_REDIS_REST_URL;
-const REDIS_TOKEN = process.env.UPSTASH_REDIS_REST_TOKEN;
+import crypto from "crypto";
 
-function makeCode(length = 6) {
-  const chars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
-  let out = "";
-  for (let i = 0; i < length; i++) {
-    out += chars[Math.floor(Math.random() * chars.length)];
-  }
-  return out;
+const SECRET = process.env.LINK_SECRET || "default-vercel-shortener-secret-key";
+
+function makeSig(payloadB64) {
+  return crypto
+    .createHmac("sha256", SECRET)
+    .update(payloadB64)
+    .digest("base64url")
+    .slice(0, 8);
 }
 
-async function redisCmd(cmd) {
-  const r = await fetch(REDIS_URL, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${REDIS_TOKEN}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify(cmd),
-  });
-  if (!r.ok) throw new Error(`Redis failed: ${r.status}`);
-  return r.json();
-}
-
-export default async function handler(req, res) {
-  if (req.method !== "POST") return res.status(405).json({ error: "Method not allowed" });
-  if (!REDIS_URL || !REDIS_TOKEN) {
-    return res.status(500).json({ error: "Missing UPSTASH_REDIS_REST_URL or UPSTASH_REDIS_REST_TOKEN" });
+export default function handler(req, res) {
+  if (req.method !== "POST") {
+    return res.status(405).json({ error: "Method not allowed" });
   }
 
   const { long_url } = req.body || {};
-  if (!long_url) return res.status(400).json({ error: "long_url is required" });
+  if (!long_url) {
+    return res.status(400).json({ error: "long_url is required" });
+  }
 
   let parsed;
   try {
@@ -41,20 +28,16 @@ export default async function handler(req, res) {
   }
 
   if (!["http:", "https:"].includes(parsed.protocol)) {
-    return res.status(400).json({ error: "Only http/https allowed" });
+    return res.status(400).json({ error: "Only http/https URLs are allowed" });
   }
 
-  let code = makeCode(6);
-  for (let i = 0; i < 10; i++) {
-    const exists = await redisCmd(["GET", `link:${code}`]);
-    if (!exists.result) break;
-    code = makeCode(6);
-  }
+  const payloadB64 = Buffer.from(parsed.toString(), "utf8").toString("base64url");
+  const sig = makeSig(payloadB64);
+  const slug = `${payloadB64}.${sig}.mp4`;
 
-  await redisCmd(["SET", `link:${code}`, parsed.toString()]);
-
-  const slug = `${code}.mp4`;
   const host = req.headers["x-forwarded-host"] || req.headers.host;
   const proto = req.headers["x-forwarded-proto"] || "https";
-  return res.status(200).json({ slug, short_url: `${proto}://${host}/${slug}` });
+  const short_url = `${proto}://${host}/${slug}`;
+
+  return res.status(200).json({ slug, short_url });
 }
