@@ -1,1 +1,239 @@
+<!DOCTYPE html>
+<html lang="en-US">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>cdn - URL Shortener</title>
+  <style>
+    * { box-sizing: border-box; }
+    html, body { margin: 0; padding: 0; }
+    body {
+      min-height: 100vh;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
+      background: linear-gradient(135deg, #eef2ff 0%, #f8fafc 50%, #ecfeff 100%);
+      color: #172033;
+    }
+    .mp4-wrapper {
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 30px 18px;
+    }
+    .mp4-card {
+      width: 100%;
+      max-width: 720px;
+      background: #ffffff;
+      border-radius: 22px;
+      padding: 48px 38px;
+      box-shadow: 0 20px 60px rgba(15, 23, 42, 0.10);
+      text-align: center;
+    }
+    .mp4-logo {
+      width: 64px;
+      height: 64px;
+      margin: 0 auto 20px;
+      border-radius: 18px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: linear-gradient(135deg, #4f46e5, #06b6d4);
+      color: #ffffff;
+      font-size: 28px;
+      font-weight: 800;
+    }
+    .mp4-card h1 {
+      margin: 0 0 12px;
+      font-size: 36px;
+      line-height: 1.2;
+      color: #111827;
+    }
+    .mp4-card .subtitle {
+      margin: 0 auto 30px;
+      max-width: 520px;
+      color: #64748b;
+      font-size: 17px;
+      line-height: 1.6;
+    }
+    .mp4-form {
+      display: flex;
+      gap: 10px;
+      margin-top: 25px;
+    }
+    .mp4-form input {
+      flex: 1;
+      min-width: 0;
+      height: 56px;
+      border: 1px solid #dbe2ea;
+      border-radius: 12px;
+      padding: 0 17px;
+      font-size: 16px;
+      outline: none;
+      transition: .2s;
+    }
+    .mp4-form input:focus {
+      border-color: #6366f1;
+      box-shadow: 0 0 0 4px rgba(99, 102, 241, .10);
+    }
+    .mp4-form button {
+      height: 56px;
+      border: 0;
+      border-radius: 12px;
+      padding: 0 25px;
+      background: #4f46e5;
+      color: #ffffff;
+      font-size: 16px;
+      font-weight: 700;
+      cursor: pointer;
+      transition: .2s;
+    }
+    .mp4-form button:hover { background: #4338ca; }
+    .mp4-message {
+      margin-top: 20px;
+      padding: 14px 16px;
+      border-radius: 12px;
+      background: #fef2f2;
+      color: #b91c1c;
+      display: none;
+    }
+    .mp4-result {
+      margin-top: 25px;
+      padding: 20px;
+      border-radius: 15px;
+      background: #ecfdf5;
+      border: 1px solid #bbf7d0;
+      display: none;
+    }
+    .mp4-result strong {
+      display: block;
+      margin-bottom: 10px;
+      color: #166534;
+    }
+    .mp4-result-row { display: flex; gap: 8px; }
+    .mp4-result input {
+      flex: 1;
+      min-width: 0;
+      height: 48px;
+      border: 1px solid #bbf7d0;
+      border-radius: 10px;
+      padding: 0 12px;
+      background: #ffffff;
+      font-size: 14px;
+    }
+    .mp4-copy {
+      border: 0;
+      border-radius: 10px;
+      padding: 0 17px;
+      background: #15803d;
+      color: #ffffff;
+      cursor: pointer;
+      font-weight: 600;
+    }
+    .mp4-features {
+      display: flex;
+      justify-content: center;
+      gap: 25px;
+      flex-wrap: wrap;
+      margin-top: 30px;
+      color: #64748b;
+      font-size: 14px;
+    }
+    .mp4-footer {
+      margin-top: 30px;
+      color: #94a3b8;
+      font-size: 13px;
+    }
+    @media (max-width: 650px) {
+      .mp4-card { padding: 35px 20px; }
+      .mp4-card h1 { font-size: 29px; }
+      .mp4-form { flex-direction: column; }
+      .mp4-form button { width: 100%; }
+      .mp4-result-row { flex-direction: column; }
+      .mp4-copy { height: 48px; }
+    }
+  </style>
+</head>
+<body>
+  <div class="mp4-wrapper">
+    <main class="mp4-card">
+      <div class="mp4-logo">↗</div>
+      <h1>URL Shortener</h1>
+      <p class="subtitle">Create short and easy-to-share links from your long URLs.</p>
 
+      <form id="shorten-form" class="mp4-form">
+        <input
+          type="url"
+          id="long-url-input"
+          name="long_url"
+          placeholder="https://example.com/your-long-url"
+          required
+          autocomplete="off"
+        />
+        <button type="submit" id="submit-btn">Shorten URL</button>
+      </form>
+
+      <div id="error-box" class="mp4-message"></div>
+
+      <div id="result-box" class="mp4-result">
+        <strong>Your short URL is ready!</strong>
+        <div class="mp4-result-row">
+          <input type="text" readonly id="generated-short-url" value="" />
+          <button type="button" class="mp4-copy" id="copy-btn">Copy</button>
+        </div>
+      </div>
+
+      <div class="mp4-features">
+        <span>✓ Fast</span>
+        <span>✓ Simple</span>
+        <span>✓ Easy to Share</span>
+      </div>
+
+      <div class="mp4-footer">cdn</div>
+    </main>
+  </div>
+
+  <script>
+    const form = document.getElementById("shorten-form");
+    const input = document.getElementById("long-url-input");
+    const submitBtn = document.getElementById("submit-btn");
+    const errorBox = document.getElementById("error-box");
+    const resultBox = document.getElementById("result-box");
+    const shortUrlInput = document.getElementById("generated-short-url");
+    const copyBtn = document.getElementById("copy-btn");
+
+    form.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      errorBox.style.display = "none";
+      resultBox.style.display = "none";
+      submitBtn.disabled = true;
+      submitBtn.textContent = "Shortening...";
+
+      try {
+        const res = await fetch("/api/shorten", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ long_url: input.value.trim() }),
+        });
+        const data = await res.json();
+        if (!res.ok) {
+          throw new Error(data.error || "Failed to shorten URL");
+        }
+        shortUrlInput.value = data.short_url;
+        copyBtn.textContent = "Copy";
+        resultBox.style.display = "block";
+      } catch (err) {
+        errorBox.textContent = err.message;
+        errorBox.style.display = "block";
+      } finally {
+        submitBtn.disabled = false;
+        submitBtn.textContent = "Shorten URL";
+      }
+    });
+
+    copyBtn.addEventListener("click", async () => {
+      await navigator.clipboard.writeText(shortUrlInput.value);
+      copyBtn.textContent = "Copied!";
+    });
+  </script>
+</body>
+</html>
