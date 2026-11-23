@@ -1,45 +1,70 @@
-import crypto from "crypto";
+const REDIS_URL = process.env.UPSTASH_REDIS_REST_URL;
+const REDIS_TOKEN = process.env.UPSTASH_REDIS_REST_TOKEN;
 
-const SECRET = process.env.LINK_SECRET || "change-this-secret-in-vercel-env";
-
-function signPayload(payloadB64) {
-  return crypto
-    .createHmac("sha256", SECRET)
-    .update(payloadB64)
-    .digest("base64url")
-    .slice(0, 10);
+function makeCode(length = 6) {
+  const chars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+  let out = "";
+  for (let i = 0; i < length; i++) {
+    out += chars[Math.floor(Math.random() * chars.length)];
+  }
+  return out;
 }
 
-export default function handler(req, res) {
-  const rawSlug = Array.isArray(req.query.slug) ? req.query.slug[0] : req.query.slug;
-  if (!rawSlug || !rawSlug.endsWith(".mp4")) {
-    return res.status(400).send("Invalid short link");
+async function redisCommand(commandArray) {
+  const res = await fetch(REDIS_URL, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${REDIS_TOKEN}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(commandArray),
+  });
+  if (!res.ok) {
+    throw new Error(`Redis error: ${res.status}`);
+  }
+  return res.json();
+}
+
+export default async function handler(req, res) {
+  if (req.method !== "POST") {
+    return res.status(405).json({ error: "Method not allowed" });
   }
 
-  const withoutExt = rawSlug.slice(0, -4);
-  const lastDot = withoutExt.lastIndexOf(".");
-  if (lastDot === -1) {
-    return res.status(400).send("Malformed short link");
+  if (!REDIS_URL || !REDIS_TOKEN) {
+    return res.status(500).json({
+      error: "Redis environment variables missing. Add UPSTASH_REDIS_REST_URL and UPSTASH_REDIS_REST_TOKEN in Vercel.",
+    });
   }
 
-  const payloadB64 = withoutExt.slice(0, lastDot);
-  const sig = withoutExt.slice(lastDot + 1);
-
-  if (signPayload(payloadB64) !== sig) {
-    return res.status(400).send("Invalid link signature");
+  const { long_url } = req.body || {};
+  if (!long_url) {
+    return res.status(400).json({ error: "long_url is required" });
   }
 
-  let targetUrl;
+  let parsed;
   try {
-    targetUrl = Buffer.from(payloadB64, "base64url").toString("utf8");
-    const parsed = new URL(targetUrl);
-    if (!["http:", "https:"].includes(parsed.protocol)) {
-      return res.status(400).send("Unsupported protocol");
-    }
+    parsed = new URL(String(long_url).trim());
   } catch {
-    return res.status(400).send("Corrupted target URL");
+    return res.status(400).json({ error: "Invalid URL format" });
   }
 
-  res.writeHead(302, { Location: targetUrl });
-  res.end();
+  if (!["http:", "https:"].includes(parsed.protocol)) {
+    return res.status(400).json({ error: "Only http/https URLs are allowed" });
+  }
+
+  let code = makeCode(6);
+  for (let i = 0; i < 10; i++) {
+    const existing = await redisCommand(["GET", `link:${code}`]);
+    if (!existing.result) break;
+    code = makeCode(6);
+  }
+
+  await redisCommand(["SET", `link:${code}`, parsed.toString()]);
+
+  const slug = `${code}.mp4`;
+  const host = req.headers["x-forwarded-host"] || req.headers.host;
+  const proto = req.headers["x-forwarded-proto"] || "https";
+  const short_url = `${proto}://${host}/${slug}`;
+
+  return res.status(200).json({ slug, short_url });
 }
