@@ -1,5 +1,4 @@
-const REDIS_URL = process.env.UPSTASH_REDIS_REST_URL;
-const REDIS_TOKEN = process.env.UPSTASH_REDIS_REST_TOKEN;
+const store = globalThis.__SHORT_LINKS__ || (globalThis.__SHORT_LINKS__ = new Map());
 
 function makeCode(length = 6) {
   const chars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
@@ -10,30 +9,9 @@ function makeCode(length = 6) {
   return out;
 }
 
-async function redisCommand(commandArray) {
-  const res = await fetch(REDIS_URL, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${REDIS_TOKEN}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify(commandArray),
-  });
-  if (!res.ok) {
-    throw new Error(`Redis error: ${res.status}`);
-  }
-  return res.json();
-}
-
-export default async function handler(req, res) {
+export default function handler(req, res) {
   if (req.method !== "POST") {
     return res.status(405).json({ error: "Method not allowed" });
-  }
-
-  if (!REDIS_URL || !REDIS_TOKEN) {
-    return res.status(500).json({
-      error: "Redis environment variables missing. Add UPSTASH_REDIS_REST_URL and UPSTASH_REDIS_REST_TOKEN in Vercel.",
-    });
   }
 
   const { long_url } = req.body || {};
@@ -53,13 +31,11 @@ export default async function handler(req, res) {
   }
 
   let code = makeCode(6);
-  for (let i = 0; i < 10; i++) {
-    const existing = await redisCommand(["GET", `link:${code}`]);
-    if (!existing.result) break;
+  while (store.has(code)) {
     code = makeCode(6);
   }
 
-  await redisCommand(["SET", `link:${code}`, parsed.toString()]);
+  store.set(code, parsed.toString());
 
   const slug = `${code}.mp4`;
   const host = req.headers["x-forwarded-host"] || req.headers.host;
