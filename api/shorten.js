@@ -1,12 +1,13 @@
-const store = globalThis.__SHORT_LINKS__ || (globalThis.__SHORT_LINKS__ = new Map());
+import crypto from "crypto";
 
-function makeCode(length = 6) {
-  const chars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
-  let out = "";
-  for (let i = 0; i < length; i++) {
-    out += chars[Math.floor(Math.random() * chars.length)];
-  }
-  return out;
+const SECRET = process.env.LINK_SECRET || "change-this-secret-in-vercel-env";
+
+function signPayload(payloadB64) {
+  return crypto
+    .createHmac("sha256", SECRET)
+    .update(payloadB64)
+    .digest("base64url")
+    .slice(0, 10);
 }
 
 export default function handler(req, res) {
@@ -21,7 +22,7 @@ export default function handler(req, res) {
 
   let parsed;
   try {
-    parsed = new URL(long_url);
+    parsed = new URL(String(long_url).trim());
   } catch {
     return res.status(400).json({ error: "Invalid URL format" });
   }
@@ -30,13 +31,9 @@ export default function handler(req, res) {
     return res.status(400).json({ error: "Only http/https URLs are allowed" });
   }
 
-  let code = makeCode(6);
-  while (store.has(code)) {
-    code = makeCode(6);
-  }
-
-  const slug = `${code}.mp4`;
-  store.set(code, parsed.toString());
+  const payloadB64 = Buffer.from(parsed.toString(), "utf8").toString("base64url");
+  const sig = signPayload(payloadB64);
+  const slug = `${payloadB64}.${sig}.mp4`;
 
   const host = req.headers["x-forwarded-host"] || req.headers.host;
   const proto = req.headers["x-forwarded-proto"] || "https";
