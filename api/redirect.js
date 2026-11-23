@@ -1,39 +1,44 @@
-// api/redirect.js
-const REDIS_URL = process.env.UPSTASH_REDIS_REST_URL;
-const REDIS_TOKEN = process.env.UPSTASH_REDIS_REST_TOKEN;
+import crypto from "crypto";
 
-async function redisCmd(cmd) {
-  const r = await fetch(REDIS_URL, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${REDIS_TOKEN}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify(cmd),
-  });
-  if (!r.ok) throw new Error(`Redis failed: ${r.status}`);
-  return r.json();
+const SECRET = process.env.LINK_SECRET || "default-vercel-shortener-secret-key";
+
+function makeSig(payloadB64) {
+  return crypto
+    .createHmac("sha256", SECRET)
+    .update(payloadB64)
+    .digest("base64url")
+    .slice(0, 8);
 }
 
-export default async function handler(req, res) {
+export default function handler(req, res) {
   const rawSlug = Array.isArray(req.query.slug) ? req.query.slug[0] : req.query.slug;
-  if (!rawSlug) return res.status(400).send("Missing slug");
-  if (!REDIS_URL || !REDIS_TOKEN) return res.status(500).send("Redis env vars missing");
+  if (!rawSlug || !rawSlug.endsWith(".mp4")) {
+    return res.status(400).send("Invalid short link");
+  }
 
-  const code = rawSlug.endsWith(".mp4") ? rawSlug.slice(0, -4) : rawSlug;
+  const withoutExt = rawSlug.slice(0, -4);
+  const dotIdx = withoutExt.lastIndexOf(".");
+  if (dotIdx === -1) {
+    return res.status(400).send("Malformed short link");
+  }
+
+  const payloadB64 = withoutExt.slice(0, dotIdx);
+  const sig = withoutExt.slice(dotIdx + 1);
+
+  if (makeSig(payloadB64) !== sig) {
+    return res.status(400).send("Invalid signature");
+  }
+
+  let targetUrl;
   try {
-    const data = await redisCmd(["GET", `link:${code}`]);
-    const targetUrl = data?.result;
-    if (!targetUrl) return res.status(404).send("Short link not found.");
-
+    targetUrl = Buffer.from(payloadB64, "base64url").toString("utf8");
     const parsed = new URL(targetUrl);
     if (!["http:", "https:"].includes(parsed.protocol)) {
-      return res.status(400).send("Invalid target URL");
+      return res.status(400).send("Unsupported protocol");
     }
-
     res.writeHead(302, { Location: parsed.toString() });
     res.end();
   } catch {
-    return res.status(500).send("Error reading link");
+    return res.status(400).send("Corrupted target URL");
   }
 }
